@@ -1,5 +1,10 @@
 """Local probe suite. Run: python3 test_gate.py"""
-from gate import evaluate
+import os
+import sys
+
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "api"))
+
+from gate import evaluate  # noqa: E402
 
 CASES = [
     # --- schema

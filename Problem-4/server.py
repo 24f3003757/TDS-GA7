@@ -7,11 +7,14 @@ No third-party dependencies.
 """
 import json
 import os
+import sys
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from gate import evaluate, ALLOWED_HOSTS, CHANNELS
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "api"))
+
+from gate import evaluate, ALLOWED_HOSTS, CHANNELS  # noqa: E402
 
 
 PROBES = []          # ring buffer of the last 400 graded requests
