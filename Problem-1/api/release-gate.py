@@ -17,11 +17,17 @@ def evaluate(payload: dict) -> list:
     if perms != REQUIRED_PERMS:
         v.append("EXCESS_PERMISSION")
 
-    trigger = wf.get("trigger")
-    if event == "pull_request":
-        if trigger == "pull_request_target":
-            v.append("UNSAFE_PR_TRIGGER")
-        if not wf.get("testsPassed", False) or not wf.get("matrixComplete", False) or wf.get("failFast", True):
+    # pull_request_target is unsafe regardless of which event is claimed.
+    if wf.get("trigger") == "pull_request_target":
+        v.append("UNSAFE_PR_TRIGGER")
+
+    # Test/matrix gating applies to any run that reports these fields; a PR is
+    # always gated even if the fields are omitted.
+    test_keys = ("testsPassed", "matrixComplete", "failFast")
+    if event == "pull_request" or any(k in wf for k in test_keys):
+        if (not wf.get("testsPassed", False)
+                or not wf.get("matrixComplete", False)
+                or wf.get("failFast", True)):
             v.append("TESTS_INCOMPLETE")
 
     for a in wf.get("actions", []) or []:
