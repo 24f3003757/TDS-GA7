@@ -30,7 +30,7 @@ Render dashboard → **New +** → **Web Service** → connect this repo, then f
 | Language / Runtime | `Python 3` |
 | Branch | `main` |
 | Root Directory | `Problem-5` |
-| Build Command | *(leave empty)* |
+| Build Command | `pip install -r requirements.txt` |
 | Start Command | `python3 server.py` |
 | Instance Type | Free |
 
