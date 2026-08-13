@@ -24,13 +24,8 @@ jobs:
       - name: Smoke-test release-gate logic
         run: |
           python - <<'PY'
-          import sys
-          sys.path.insert(0, "api")
-          from importlib import import_module
-          m = import_module("release-gate".replace("-", "_")) if False else __import__("release_gate", fromlist=["evaluate"]) if False else None
-          # Load module by file path since filename has a hyphen
           import importlib.util
-          spec = importlib.util.spec_from_file_location("rg", "api/release-gate.py")
+          spec = importlib.util.spec_from_file_location("rg", "Problem-1/api/release-gate.py")
           rg = importlib.util.module_from_spec(spec); spec.loader.exec_module(rg)
 
           safe = {
@@ -42,11 +37,28 @@ jobs:
               "actions": [{"owner": "actions", "name": "checkout", "ref": "v4"}]
             },
             "image": {"multiStage": True, "runsAsRoot": False, "secretMode": "buildkit",
-                       "criticalVulnerabilities": 0, "digestPinned": True}
+                      "criticalVulnerabilities": 0, "digestPinned": True}
           }
           assert rg.evaluate(safe) == [], rg.evaluate(safe)
 
-          bad = dict(safe); bad["image"] = dict(safe["image"]); bad["image"]["runsAsRoot"] = True
+          bad = dict(safe)
+          bad["image"] = dict(safe["image"]); bad["image"]["runsAsRoot"] = True
           assert "ROOT_RUNTIME" in rg.evaluate(bad)
+
+          prod = {
+            "target": "production", "event": "push", "ref": "refs/heads/dev",
+            "workflow": {
+              "trigger": "push",
+              "permissions": {"contents": "read", "packages": "write", "id-token": "none"},
+              "actions": [{"owner": "docker", "name": "build-push-action", "ref": "v5"}]
+            },
+            "image": {"multiStage": False, "runsAsRoot": False, "secretMode": "arg",
+                      "criticalVulnerabilities": 3, "digestPinned": False}
+          }
+          got = set(rg.evaluate(prod))
+          expected = {"MUTABLE_ACTION", "SINGLE_STAGE_IMAGE", "SECRET_IN_LAYER",
+                      "CRITICAL_CVE", "UNPINNED_IMAGE", "INVALID_PRODUCTION_REF",
+                      "APPROVAL_REQUIRED"}
+          assert got == expected, (got ^ expected)
           print("OK")
           PY
