@@ -14,7 +14,7 @@ from gate import evaluate, ALLOWED_HOSTS, CHANNELS
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    timeout = 30
+    timeout = 60
 
     def log_message(self, fmt, *args):
         print("[http] " + (fmt % args), flush=True)
@@ -27,8 +27,17 @@ class Handler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "*")
         self.send_header("Content-Length", str(len(data)))
+        # One request per connection. Keep-alive lets a client reuse a socket
+        # at the exact moment the idle timeout closes it, which shows up as a
+        # request with no response. Not worth the saved handshake here.
+        self.send_header("Connection", "close")
         self.end_headers()
         self.wfile.write(data)
+        try:
+            self.wfile.flush()
+        except Exception:
+            pass
+        self.close_connection = True
 
     def do_OPTIONS(self):
         self._send(204, {})

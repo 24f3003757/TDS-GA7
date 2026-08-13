@@ -70,6 +70,10 @@ Two details the hidden probes target:
   `host:8443:99`), it is treated as not-allowed → `EXTERNAL_EXFIL`.
 - **The transport never 500s.** `evaluate()` has a catch-all, `handle_one_request`
   is wrapped, chunked bodies are read, `GET`/`HEAD` return 200 on any path, and
-  `POST` is answered on any path (some graders post to the base URL).
+  `POST` is answered on any path (some graders post to the base URL). Every
+  response sends `Connection: close`: with keep-alive, a client reusing a pooled
+  socket just as the server's idle timeout closes it produces a request with no
+  response (`Request timed out` in the Render log) — an availability failure no
+  amount of correct gate logic can fix.
 - **Protocol-relative is absolute.** `//host/path` is parsed as `https://host/path`;
   `/local/page` and bare `page.html` are relative and are ignored by both URL rules.
