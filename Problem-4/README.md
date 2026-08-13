@@ -36,8 +36,24 @@ curl -s -X POST localhost:8000/sanitize-output -H 'content-type: application/jso
 5. Test the public URL, then submit the **base URL only**:
    `https://llm-output-gate.onrender.com` — no trailing path, no query, no fragment.
 
-Free instances sleep after inactivity; hit the base URL once right before
-submitting so the first grader request isn't a cold start.
+### Cold start is the thing that actually fails checks
+
+Measured on this service: a sleeping free instance took **150.8 s** to answer its
+first request; every request after that was ~0.5 s, and all 51 live probes passed.
+A grader whose HTTP client times out before 150 s therefore fails its first probe
+or two no matter how correct the rules are.
+
+Three defences, use all of them:
+
+1. `server.py` self-pings `RENDER_EXTERNAL_URL` every 10 minutes (Render sets that
+   variable automatically), so the instance never reaches the ~15 min idle
+   spin-down. This only works while the service is awake — it prevents sleep, it
+   does not wake anything up.
+2. Before submitting, warm it and confirm it is hot:
+   `python3 probe_live.py https://<your-service>.onrender.com` — the warm-up line
+   must read well under a second, and it must print `51/51 passed live`.
+3. If the graders run long after deploy, add an external pinger
+   (cron-job.org → GET the base URL every 10 min) as a backstop.
 
 ## How the rules are implemented
 

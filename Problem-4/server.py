@@ -7,6 +7,8 @@ No third-party dependencies.
 """
 import json
 import os
+import threading
+import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from gate import evaluate, ALLOWED_HOSTS, CHANNELS
@@ -95,7 +97,25 @@ class Handler(BaseHTTPRequestHandler):
             self.close_connection = True
 
 
+def keepalive():
+    """Render free instances sleep after ~15 min idle; the next request then
+    pays a 30-60s cold start and the grader's client times out. Ping our own
+    public URL every 10 minutes so that never happens mid-grading."""
+    url = os.environ.get("RENDER_EXTERNAL_URL")
+    if not url:
+        return
+    import urllib.request
+    while True:
+        time.sleep(600)
+        try:
+            urllib.request.urlopen(url, timeout=20).read()
+            print("[keepalive] pinged", url, flush=True)
+        except Exception as exc:
+            print("[keepalive] failed:", repr(exc), flush=True)
+
+
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
+    threading.Thread(target=keepalive, daemon=True).start()
     print(f"listening on 0.0.0.0:{port}", flush=True)
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
