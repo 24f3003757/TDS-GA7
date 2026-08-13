@@ -1,0 +1,52 @@
+name: TDS GA7 Release Gate
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  test-release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: "TDS identity: 24f3003757@ds.study.iitm.ac.in"
+        run: echo "TDS identity 24f3003757@ds.study.iitm.ac.in"
+
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Smoke-test release-gate logic
+        run: |
+          python - <<'PY'
+          import sys
+          sys.path.insert(0, "api")
+          from importlib import import_module
+          m = import_module("release-gate".replace("-", "_")) if False else __import__("release_gate", fromlist=["evaluate"]) if False else None
+          # Load module by file path since filename has a hyphen
+          import importlib.util
+          spec = importlib.util.spec_from_file_location("rg", "api/release-gate.py")
+          rg = importlib.util.module_from_spec(spec); spec.loader.exec_module(rg)
+
+          safe = {
+            "target": "preview", "event": "pull_request", "ref": "refs/heads/feature",
+            "workflow": {
+              "trigger": "pull_request",
+              "permissions": {"contents": "read", "packages": "write", "id-token": "none"},
+              "testsPassed": True, "matrixComplete": True, "failFast": False,
+              "actions": [{"owner": "actions", "name": "checkout", "ref": "v4"}]
+            },
+            "image": {"multiStage": True, "runsAsRoot": False, "secretMode": "buildkit",
+                       "criticalVulnerabilities": 0, "digestPinned": True}
+          }
+          assert rg.evaluate(safe) == [], rg.evaluate(safe)
+
+          bad = dict(safe); bad["image"] = dict(safe["image"]); bad["image"]["runsAsRoot"] = True
+          assert "ROOT_RUNTIME" in rg.evaluate(bad)
+          print("OK")
+          PY

@@ -1,0 +1,10 @@
+{
+  "version": 2,
+  "builds": [
+    {"src": "api/release-gate.py", "use": "@vercel/python"}
+  ],
+  "routes": [
+    {"src": "/release-gate", "methods": ["POST", "GET", "OPTIONS"], "dest": "/api/release-gate.py"},
+    {"src": "/release-gate/", "methods": ["POST", "GET", "OPTIONS"], "dest": "/api/release-gate.py"}
+  ]
+}
