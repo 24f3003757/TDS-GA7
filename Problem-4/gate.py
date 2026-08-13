@@ -3,7 +3,7 @@
 No AI, no phrase list. Pure rules, applied in a fixed order.
 """
 import re
-from urllib.parse import unquote, urlsplit
+from urllib.parse import urlsplit
 
 ALLOWED_HOSTS = {"cdn-20nrl5e.example", "app-ym5llhd.example"}
 CHANNELS = ("html", "markdown", "url", "sql", "shell")
@@ -28,12 +28,23 @@ def _num_ent(m):
     return m.group(0)
 
 
+_PCT_RUN = re.compile(r"(?:%[0-9a-fA-F]{2})+")
+
+
+def _pct_run(m):
+    """Decode one run of %XX. Bytes that are not valid UTF-8 are left alone
+    rather than aborting the whole decode: `%C3%28%3Cscript%3E` must still
+    reveal its <script>."""
+    raw = bytes(int(m.group(0)[i + 1:i + 3], 16) for i in range(0, len(m.group(0)), 3))
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return raw.decode("latin-1")
+
+
 def decode_once(s):
     """percent-escapes -> HTML entities (numeric + the 5 named) -> \\uXXXX."""
-    try:
-        s = unquote(s, errors="strict")
-    except Exception:
-        pass
+    s = _PCT_RUN.sub(_pct_run, s)
     s = _NUM_ENT.sub(_num_ent, s)
     s = _NAMED_ENT.sub(lambda m: _NAMED[m.group(0).lower()], s)
     s = _U_ESC.sub(lambda m: chr(int(m.group(1), 16)), s)

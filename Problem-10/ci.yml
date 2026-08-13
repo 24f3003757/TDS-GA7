@@ -1,0 +1,66 @@
+name: CI and release
+
+on:
+  pull_request_target:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  preview-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+      - uses: acme-ci/setup-action@v3
+      - name: Install and build
+        run: npm ci && npm run build
+      - name: Label the build
+        run: |
+          echo "Building ${{ github.event.pull_request.title }}" >> notes.txt
+      - name: Upload preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: preview
+          path: dist/
+
+  unit-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [20, 22]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci && npm test
+
+  publish:
+    needs: [unit-tests]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: acme-ci/deploy-action@dc7966133328cc22892ced5d54da3415ac6b7cbc
+        with:
+          project: storefront
+      - name: Show configuration
+        run: echo "registry token is ${{ secrets.REGISTRY_TOKEN }}"
+      - name: Deploy
+        run: ./scripts/deploy.sh --env production
+        env:
+          DEPLOY_TOKEN: ${{ secrets.DEPLOY_TOKEN }}

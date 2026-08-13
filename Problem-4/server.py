@@ -21,7 +21,7 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print("[http] " + (fmt % args), flush=True)
 
-    def _send(self, code, body):
+    def _send(self, code, body, head_only=False):
         data = json.dumps(body).encode()
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
@@ -34,7 +34,10 @@ class Handler(BaseHTTPRequestHandler):
         # request with no response. Not worth the saved handshake here.
         self.send_header("Connection", "close")
         self.end_headers()
-        self.wfile.write(data)
+        # A HEAD response must carry the headers but no body, or the client's
+        # parser reads our JSON as the start of the next response.
+        if not head_only:
+            self.wfile.write(data)
         try:
             self.wfile.flush()
         except Exception:
@@ -44,16 +47,17 @@ class Handler(BaseHTTPRequestHandler):
     def do_OPTIONS(self):
         self._send(204, {})
 
-    def do_GET(self):
+    def do_GET(self, head_only=False):
         # 200 on every path, so an availability probe never sees a 404.
         self._send(200, {
             "ok": True,
             "endpoint": "POST /sanitize-output",
             "channels": list(CHANNELS),
             "allowedHosts": sorted(ALLOWED_HOSTS),
-        })
+        }, head_only=head_only)
 
-    do_HEAD = do_GET
+    def do_HEAD(self):
+        self.do_GET(head_only=True)
 
     def _read_body(self):
         te = (self.headers.get("Transfer-Encoding") or "").lower()
