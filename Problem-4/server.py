@@ -24,6 +24,20 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, fmt, *args):
         print("[http] " + (fmt % args), flush=True)
 
+    def _record(self, method, raw, result):
+        """Every request the grader makes, not just the ones we grade. The two
+        failing checks never showed up in the POST log, so they are some other
+        method, path, or a request that dies before it reaches do_POST."""
+        if self.path.split("?")[0] == "/_probes":
+            return
+        PROBES.append({
+            "t": time.time(), "method": method, "path": self.path,
+            "ua": self.headers.get("User-Agent", ""),
+            "ct": self.headers.get("Content-Type", ""),
+            "raw": raw[:2000], "result": result,
+        })
+        del PROBES[:-400]
+
     def _send(self, code, body, head_only=False):
         data = json.dumps(body).encode()
         self.send_response(code)
@@ -48,13 +62,18 @@ class Handler(BaseHTTPRequestHandler):
         self.close_connection = True
 
     def do_OPTIONS(self):
-        self._send(204, {})
+        # 200, not 204: a 204 must not carry a body, and a CORS preflight that
+        # disagrees with its own Content-Length is exactly the kind of thing an
+        # availability probe reports as an unreachable endpoint.
+        self._record("OPTIONS", "", None)
+        self._send(200, {"ok": True})
 
     def do_GET(self, head_only=False):
         if self.path.split("?")[0] == "/_probes":
             self._send(200, {"count": len(PROBES), "probes": PROBES},
                        head_only=head_only)
             return
+        self._record("HEAD" if head_only else "GET", "", None)
         # 200 on every path, so an availability probe never sees a 404.
         self._send(200, {
             "ok": True,
@@ -94,18 +113,23 @@ class Handler(BaseHTTPRequestHandler):
             result = {"safe": False, "reason": "INVALID_SCHEMA"}
         else:
             result = evaluate(body)
-        # Log the request body, not just the verdict. The grader will not tell
-        # us which probes failed, but it does send them here — so record them
-        # and read them back off /_probes after the next submission.
-        record = {"t": time.time(), "path": self.path,
-                  "raw": raw.decode("utf-8", "replace")[:2000], "result": result}
-        PROBES.append(record)
-        del PROBES[:-400]
+        text = raw.decode("utf-8", "replace")
+        self._record(self.command, text, result)
         print("[gate]", self.path, json.dumps(result),
-              "<<", json.dumps(record["raw"]), flush=True)
+              "<<", json.dumps(text[:2000]), flush=True)
         self._send(200, result)
 
+    # Any body-carrying method grades. The default handler answers an unknown
+    # method with a 501 *HTML* page, which a probe reads as invalid JSON.
     do_PUT = do_POST
+    do_PATCH = do_POST
+    do_DELETE = do_POST
+
+    def send_error(self, code, message=None, explain=None):
+        # Errors must be JSON too, for the same reason.
+        self._record("ERROR-" + str(self.command), str(message or ""), None)
+        self._send(code if code < 500 else 400,
+                   {"safe": False, "reason": "INVALID_SCHEMA"})
 
     def handle_one_request(self):
         # Never let a transport-level error surface as a bodyless 500.
