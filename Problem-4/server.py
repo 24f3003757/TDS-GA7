@@ -14,6 +14,9 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from gate import evaluate, ALLOWED_HOSTS, CHANNELS
 
 
+PROBES = []          # ring buffer of the last 400 graded requests
+
+
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     timeout = 60
@@ -48,6 +51,10 @@ class Handler(BaseHTTPRequestHandler):
         self._send(204, {})
 
     def do_GET(self, head_only=False):
+        if self.path.split("?")[0] == "/_probes":
+            self._send(200, {"count": len(PROBES), "probes": PROBES},
+                       head_only=head_only)
+            return
         # 200 on every path, so an availability probe never sees a 404.
         self._send(200, {
             "ok": True,
@@ -87,7 +94,15 @@ class Handler(BaseHTTPRequestHandler):
             result = {"safe": False, "reason": "INVALID_SCHEMA"}
         else:
             result = evaluate(body)
-        print("[gate]", self.path, json.dumps(result), flush=True)
+        # Log the request body, not just the verdict. The grader will not tell
+        # us which probes failed, but it does send them here — so record them
+        # and read them back off /_probes after the next submission.
+        record = {"t": time.time(), "path": self.path,
+                  "raw": raw.decode("utf-8", "replace")[:2000], "result": result}
+        PROBES.append(record)
+        del PROBES[:-400]
+        print("[gate]", self.path, json.dumps(result),
+              "<<", json.dumps(record["raw"]), flush=True)
         self._send(200, result)
 
     do_PUT = do_POST

@@ -12,7 +12,7 @@ MAX_LEN = 20000
 # ---------------------------------------------------------------- decoding
 
 _NAMED = {"&lt;": "<", "&gt;": ">", "&quot;": '"', "&apos;": "'", "&amp;": "&"}
-_NUM_ENT = re.compile(r"&#(x[0-9a-fA-F]+|[0-9]+);")
+_NUM_ENT = re.compile(r"&#([xX][0-9a-fA-F]+|[0-9]+);")
 _NAMED_ENT = re.compile(r"&(?:lt|gt|quot|apos|amp);", re.I)
 _U_ESC = re.compile(r"\\u([0-9a-fA-F]{4})")
 
