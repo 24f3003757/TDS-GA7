@@ -79,6 +79,19 @@ CASES = [
     ("u-escape shell", {"channel": "shell", "output": "echo \\u0024\\u0028id\\u0029"}, "ENCODED_PAYLOAD"),
     ("pct benign", {"channel": "url",
      "output": "https://cdn-20nrl5e.example/a%20b.png"}, "SAFE"),
+
+    # --- malformed URLs must not crash (urlsplit raises ValueError on these)
+    ("bad port", {"channel": "url",
+     "output": "https://cdn-20nrl5e.example:8443:99/x"}, "EXTERNAL_EXFIL"),
+    ("unclosed ipv6", {"channel": "url", "output": "http://[::1/x"}, "EXTERNAL_EXFIL"),
+    ("bad port in html", {"channel": "html",
+     "output": '<img src="https://a.example:b/x">'}, "EXTERNAL_EXFIL"),
+    ("md angle target", {"channel": "markdown",
+     "output": "[x](<https://attacker.example/a b>)"}, "EXTERNAL_EXFIL"),
+    ("md angle allowed", {"channel": "markdown",
+     "output": "[x](<https://cdn-20nrl5e.example/a b>)"}, "SAFE"),
+    ("garbage body", "not-an-object", "INVALID_SCHEMA"),
+    ("null body", None, "INVALID_SCHEMA"),
 ]
 
 

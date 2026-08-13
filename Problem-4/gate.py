@@ -60,25 +60,62 @@ def extract_urls(channel, text):
             out.append(m.group(2) if m.group(2) is not None else m.group(3))
         return out
     if channel == "markdown":
-        return [m.group(1) for m in RE_MD_URL.finditer(text)]
+        out = []
+        for m in RE_MD_URL.finditer(text):
+            u = m.group(1)
+            if u.startswith("<"):              # ](<https://host/a b>)
+                u = u[1:].partition(">")[0]
+            out.append(u)
+        return out
     if channel == "url":
         t = text.strip()
         return [t] if t else []
     return []
 
 
+RE_SCHEME_PREFIX = re.compile(r"^([a-zA-Z][a-zA-Z0-9+.\-]*):")
+RE_HOSTNAME = re.compile(r"[a-z0-9](?:[a-z0-9\-._]*[a-z0-9])?")
+
+
+def _fallback(u):
+    """For URLs urlsplit refuses (bad port, unclosed IPv6, ...).
+
+    Recover the scheme so DANGEROUS_SCHEME still works, but report an empty
+    hostname: a URL too malformed to parse is never one of the allowed hosts,
+    so it fails closed as EXTERNAL_EXFIL.
+    """
+    m = RE_SCHEME_PREFIX.match(u)
+    if m:
+        return True, m.group(1).lower(), ""
+    if u.startswith("//"):
+        return True, "https", ""
+    return False, "", ""
+
+
 def _parts(raw):
-    """(is_absolute, scheme, hostname) for one extracted reference."""
-    u = raw.strip()
+    """(is_absolute, scheme, hostname) for one extracted reference.
+
+    Never raises: a URL malformed enough to break urlsplit still has to be
+    classified, and it is certainly not one of the two allowed hosts.
+    """
+    u = (raw or "").strip()
     if not u:
         return False, "", ""
-    if u.startswith("//"):                      # protocol-relative -> https:
-        sp = urlsplit("https:" + u)
-        return True, "https", (sp.hostname or "").lower()
-    sp = urlsplit(u)
-    if sp.scheme:
-        return True, sp.scheme.lower(), (sp.hostname or "").lower()
-    return False, "", ""                        # relative: /page, page.html, #x
+    try:
+        if u.startswith("//"):                  # protocol-relative -> https:
+            sp, scheme = urlsplit("https:" + u), "https"
+        else:
+            sp = urlsplit(u)
+            if not sp.scheme and not sp.netloc:
+                return False, "", ""            # relative: /page, page.html, #x
+            scheme = sp.scheme.lower() or "https"
+        sp.port                                 # raises on a malformed port
+        host = (sp.hostname or "").lower()
+        if host and not RE_HOSTNAME.fullmatch(host):
+            host = ""                           # malformed -> never allowed
+        return True, scheme, host
+    except ValueError:
+        return _fallback(u)
 
 
 def check_dangerous_scheme(channel, text):
@@ -128,6 +165,16 @@ def check_channel(channel, text):
 
 
 def evaluate(body):
+    """Never raises and never returns a non-conforming shape."""
+    try:
+        return _evaluate(body)
+    except Exception:
+        # An input weird enough to break parsing is not something we hand
+        # to a sink. Fail closed, but always with valid JSON.
+        return {"safe": False, "reason": "INVALID_SCHEMA"}
+
+
+def _evaluate(body):
     # 1. schema
     if not isinstance(body, dict):
         return {"safe": False, "reason": "INVALID_SCHEMA"}

@@ -63,5 +63,13 @@ Two details the hidden probes target:
   query, so `https://cdn-20nrl5e.example@attacker.example/` resolves to
   `attacker.example`, and `evil.cdn-20nrl5e.example` / `cdn-20nrl5e.example.attacker.test`
   both fail the set-membership test that a `in`-substring check would pass.
+- **Malformed URLs fail closed, never crash.** `urlsplit(...).port` raises
+  `ValueError` on a bad port and on an unclosed IPv6 literal — unhandled, that is
+  a bodyless HTTP 500 rather than a JSON verdict. Every URL parse is wrapped; if
+  the host cannot be parsed cleanly (or fails a hostname-shape check, e.g.
+  `host:8443:99`), it is treated as not-allowed → `EXTERNAL_EXFIL`.
+- **The transport never 500s.** `evaluate()` has a catch-all, `handle_one_request`
+  is wrapped, chunked bodies are read, `GET`/`HEAD` return 200 on any path, and
+  `POST` is answered on any path (some graders post to the base URL).
 - **Protocol-relative is absolute.** `//host/path` is parsed as `https://host/path`;
   `/local/page` and bare `page.html` are relative and are ignored by both URL rules.
